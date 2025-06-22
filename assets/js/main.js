@@ -11,37 +11,27 @@
  * - Mobile optimization
  */
 
-// Performance monitoring
-const PERFORMANCE = {
-  startTime: performance.now(),
-  frameCount: 0,
-  lastFPS: 0,
-  memoryUsage: 0,
-
-  update() {
-    this.frameCount++;
-    const now = performance.now();
-    if (now - this.startTime >= 1000) {
-      this.lastFPS = this.frameCount;
-      this.frameCount = 0;
-      this.startTime = now;
-
-      if ("memory" in performance && performance.memory) {
-        this.memoryUsage = performance.memory.usedJSHeapSize / 1024 / 1024;
-      }
-
-      // Log performance metrics in development
-      if (
-        window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1"
-      ) {
-        console.log(
-          `FPS: ${this.lastFPS}, Memory: ${this.memoryUsage.toFixed(2)}MB`
-        );
-      }
-    }
-  },
-};
+// Easter egg for the special someone 💕
+console.log(
+  "%c💖 Beating Heart Easter Egg 💖",
+  "color: #ff77fc; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 4px rgba(255, 119, 252, 0.5);"
+);
+console.log(
+  "%cChào bé yêu! 💕",
+  "color: #ff1775; font-size: 16px; font-weight: bold;"
+);
+console.log(
+  "%cTrái tim này là dành cho em, như tim anh vậy... 💓",
+  "color: #ff77ae; font-size: 14px;"
+);
+console.log(
+  "%cMỗi hạt, mỗi chuyển động, mỗi nhịp đập - tất cả đều dành cho em! ✨",
+  "color: #ffd4ee; font-size: 14px;"
+);
+console.log(
+  "%c❤️ Anh yêu em! ❤️",
+  "color: #ff1775; font-size: 18px; font-weight: bold; text-shadow: 1px 1px 2px rgba(255, 23, 117, 0.3);"
+);
 
 // Configuration object for easy customization
 const CONFIG = {
@@ -512,7 +502,6 @@ class HeartAnimation {
       try {
         this.render(currentTime);
         this.lastRenderTime = currentTime;
-        PERFORMANCE.update();
       } catch (error) {
         console.error("Render error:", error);
         this.isAnimating = false;
