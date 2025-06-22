@@ -455,23 +455,6 @@ class HeartAnimation {
     if (this.helpButton) {
       this.helpButton.addEventListener("click", () => {
         this.toggleControlsVisibility();
-        // Show keyboard shortcuts help
-        Utils.showNotification(
-          "⌨️ Keyboard shortcuts available - Press H to toggle controls",
-          "info"
-        );
-        setTimeout(() => {
-          Utils.showNotification(
-            "📷 Arrow keys: Move camera | Space: Toggle animation | M: Toggle music",
-            "info"
-          );
-        }, 1000);
-        setTimeout(() => {
-          Utils.showNotification(
-            "🔊 +/-: Volume | R: Restart | L: Loop | H: Help",
-            "info"
-          );
-        }, 2000);
       });
     }
 
