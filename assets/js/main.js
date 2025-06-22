@@ -196,6 +196,82 @@ const Utils = {
       }
     }, 1000);
   },
+
+  // Show notification for keyboard shortcuts
+  showNotification(message, type = "info") {
+    const notification = document.createElement("div");
+    const colors = {
+      info: { bg: "rgba(255, 119, 252, 0.9)", border: "#ff77fc" },
+      success: { bg: "rgba(119, 255, 119, 0.9)", border: "#77ff77" },
+      warning: { bg: "rgba(255, 170, 119, 0.9)", border: "#ffaa77" },
+      error: { bg: "rgba(255, 119, 119, 0.9)", border: "#ff7777" },
+    };
+
+    const color = colors[type] || colors.info;
+
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: ${color.bg};
+      color: white;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 1000;
+      border: 2px solid ${color.border};
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      animation: slideInNotification 0.3s ease-out;
+      max-width: 300px;
+      word-wrap: break-word;
+    `;
+
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    // Add CSS animation if not already present
+    if (!document.getElementById("notification-styles")) {
+      const style = document.createElement("style");
+      style.id = "notification-styles";
+      style.textContent = `
+        @keyframes slideInNotification {
+          0% { 
+            opacity: 0; 
+            transform: translateX(100px) scale(0.8); 
+          }
+          100% { 
+            opacity: 1; 
+            transform: translateX(0) scale(1); 
+          }
+        }
+        @keyframes slideOutNotification {
+          0% { 
+            opacity: 1; 
+            transform: translateX(0) scale(1); 
+          }
+          100% { 
+            opacity: 0; 
+            transform: translateX(100px) scale(0.8); 
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.style.animation = "slideOutNotification 0.3s ease-in";
+        setTimeout(() => {
+          if (notification.parentNode) {
+            document.body.removeChild(notification);
+          }
+        }, 300);
+      }
+    }, 3000);
+  },
 };
 
 // Main application class
@@ -379,6 +455,23 @@ class HeartAnimation {
     if (this.helpButton) {
       this.helpButton.addEventListener("click", () => {
         this.toggleControlsVisibility();
+        // Show keyboard shortcuts help
+        Utils.showNotification(
+          "⌨️ Keyboard shortcuts available - Press H to toggle controls",
+          "info"
+        );
+        setTimeout(() => {
+          Utils.showNotification(
+            "📷 Arrow keys: Move camera | Space: Toggle animation | M: Toggle music",
+            "info"
+          );
+        }, 1000);
+        setTimeout(() => {
+          Utils.showNotification(
+            "🔊 +/-: Volume | R: Restart | L: Loop | H: Help",
+            "info"
+          );
+        }, 2000);
       });
     }
 
@@ -611,30 +704,8 @@ class HeartAnimation {
   }
 
   showLoopStatus() {
-    const notification = document.createElement("div");
-    notification.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: rgba(255, 170, 119, 0.9);
-      color: white;
-      padding: 10px 15px;
-      border-radius: 5px;
-      font-family: Arial, sans-serif;
-      font-size: 12px;
-      z-index: 1000;
-      animation: fadeInOut 2s ease-in-out;
-    `;
-    notification.textContent = this.audio.loop
-      ? "🔄 Loop enabled"
-      : "⏹️ Loop disabled";
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-      if (notification.parentNode) {
-        document.body.removeChild(notification);
-      }
-    }, 2000);
+    const message = this.audio.loop ? "🔄 Loop enabled" : "⏹️ Loop disabled";
+    Utils.showNotification(message, this.audio.loop ? "success" : "warning");
   }
 
   toggleControlsVisibility() {
@@ -647,10 +718,12 @@ class HeartAnimation {
           this.musicControls.hidden = true;
         }, 300);
         Utils.updateAriaLive("Controls hidden", "polite");
+        Utils.showNotification("👁️ Controls hidden", "info");
       } else {
         this.musicControls.hidden = false;
         this.musicControls.style.opacity = "0.8";
         Utils.updateAriaLive("Controls shown", "polite");
+        Utils.showNotification("👁️ Controls shown", "success");
       }
     }
   }
@@ -846,6 +919,18 @@ class HeartAnimation {
         if (this.mainContent) {
           this.mainContent.focus();
         }
+
+        // Show welcome message with keyboard shortcuts
+        Utils.showNotification(
+          "💖 3D Heart Animation loaded! Press H for help",
+          "success"
+        );
+        setTimeout(() => {
+          Utils.showNotification(
+            "⌨️ Use arrow keys to move camera, Space to pause/resume",
+            "info"
+          );
+        }, 2000);
       }, 500);
     }
 
@@ -890,8 +975,10 @@ class HeartAnimation {
         this.isAnimating = !this.isAnimating;
         if (this.isAnimating) {
           this.renderer.setAnimationLoop((time) => this.render(time));
+          Utils.showNotification("▶️ Animation started", "success");
         } else {
           this.renderer.setAnimationLoop(null);
+          Utils.showNotification("⏸️ Animation paused", "warning");
         }
         break;
       case "m":
@@ -900,9 +987,13 @@ class HeartAnimation {
         if (this.audio) {
           if (this.audio.paused) {
             this.audio.play();
+            Utils.showNotification("🎵 Music playing", "success");
           } else {
             this.audio.pause();
+            Utils.showNotification("⏸️ Music paused", "warning");
           }
+        } else {
+          Utils.showNotification("❌ No audio available", "error");
         }
         break;
       case "r":
@@ -911,6 +1002,9 @@ class HeartAnimation {
         if (this.audio) {
           this.audio.currentTime = 0;
           this.audio.play();
+          Utils.showNotification("🔄 Music restarted", "success");
+        } else {
+          Utils.showNotification("❌ No audio available", "error");
         }
         break;
       case "+":
@@ -918,12 +1012,24 @@ class HeartAnimation {
         // Increase volume
         if (this.audio && this.audio.volume < 1.0) {
           this.audio.volume = Math.min(1.0, this.audio.volume + 0.1);
+          const volumePercent = Math.round(this.audio.volume * 100);
+          Utils.showNotification(`🔊 Volume: ${volumePercent}%`, "info");
+        } else if (this.audio) {
+          Utils.showNotification("🔊 Volume at maximum", "warning");
+        } else {
+          Utils.showNotification("❌ No audio available", "error");
         }
         break;
       case "-":
         // Decrease volume
         if (this.audio && this.audio.volume > 0.0) {
           this.audio.volume = Math.max(0.0, this.audio.volume - 0.1);
+          const volumePercent = Math.round(this.audio.volume * 100);
+          Utils.showNotification(`🔊 Volume: ${volumePercent}%`, "info");
+        } else if (this.audio) {
+          Utils.showNotification("🔊 Volume at minimum", "warning");
+        } else {
+          Utils.showNotification("❌ No audio available", "error");
         }
         break;
       case "l":
@@ -931,7 +1037,13 @@ class HeartAnimation {
         // Toggle loop
         if (this.audio) {
           this.audio.loop = !this.audio.loop;
-          this.showLoopStatus();
+          if (this.audio.loop) {
+            Utils.showNotification("🔄 Loop enabled", "success");
+          } else {
+            Utils.showNotification("⏹️ Loop disabled", "warning");
+          }
+        } else {
+          Utils.showNotification("❌ No audio available", "error");
         }
         break;
       case "h":
