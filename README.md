@@ -25,19 +25,19 @@ A high-performance, interactive 3D heart animation built with Three.js, featurin
 ## 📁 Project Structure
 
 ```
-├── TYMLYTUAN.html          # Main HTML file (optimized)
+├── index.html                # Main HTML file (optimized)
 ├── assets/
 │   ├── css/
-│   │   └── style.css       # Optimized styles with responsive design
+│   │   └── style.css         # Optimized styles with responsive design
 │   └── js/
-│       ├── three.min.js    # Three.js library
-│       ├── MeshSurfaceSampler.js
-│       ├── TrackballControls.js
+│       ├── three.min.js      # Three.js library
+│       ├── mesh-surface-sampler.js
+│       ├── trackball-controls.js
 │       ├── simplex-noise.js
-│       ├── OBJLoader.js
-│       ├── gsap.min.js     # GSAP animation library
-│       └── script.js       # Optimized main application script
-└── README.md               # Project documentation
+│       ├── obj-loader.js
+│       ├── gsap.min.js       # GSAP animation library
+│       └── main.js           # Optimized main application script
+└── README.md                 # Project documentation
 ```
 
 ## 🎮 Controls
@@ -70,7 +70,7 @@ A high-performance, interactive 3D heart animation built with Three.js, featurin
 
 ## 🎨 Customization
 
-The animation can be easily customized by modifying the `CONFIG` object in `script.js`:
+The animation can be easily customized by modifying the `CONFIG` object in `main.js`:
 
 ```javascript
 const CONFIG = {
@@ -99,7 +99,7 @@ The application automatically adapts to different screen sizes:
 ## 🚀 Getting Started
 
 1. Clone or download the project
-2. Open `TYMLYTUAN.html` in a modern web browser
+2. Open `index.html` in a modern web browser
 3. Wait for the heart model to load
 4. Interact with the 3D heart using mouse/touch or keyboard
 
