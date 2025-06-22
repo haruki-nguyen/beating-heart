@@ -26,7 +26,7 @@ console.log(
 );
 console.log(
   "%cMỗi hạt, mỗi chuyển động, mỗi nhịp đập - tất cả đều dành cho vợ! ✨",
-  "color: #ffd4ee; font-size: 14px;"
+  "color: #ff77ae; font-size: 14px;"
 );
 console.log(
   "%c❤️ Chồng yêu vợ! ❤️",
