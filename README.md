@@ -24,7 +24,7 @@ A high-performance, interactive 3D heart animation built with Three.js, featurin
 
 ## 📁 Project Structure
 
-```
+```txt
 ├── index.html                # Main HTML file (optimized)
 ├── assets/
 │   ├── css/

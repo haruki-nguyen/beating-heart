@@ -61,15 +61,21 @@ class HeartAnimation {
     this.geometry = null;
     this.material = null;
     this.spikes = [];
-    this.positions = [];
-    this.colors = [];
+    this.positions = new Float32Array(CONFIG.PARTICLE_COUNT * 6); // max 2 per spike
+    this.colors = new Float32Array(CONFIG.PARTICLE_COUNT * 6);
     this.beat = { a: 0 };
     this.simplex = new SimplexNoise();
     this.pos = new THREE.Vector3();
     this.palette = CONFIG.COLORS.map((color) => new THREE.Color(color));
     this.isLoaded = false;
     this.isAnimating = false;
+    this.tempVec3 = new THREE.Vector3();
 
+    // Cache DOM elements
+    this.loadingElement = document.getElementById("loading");
+
+    // Debounce resize handler
+    this.setupEventListeners();
     this.init();
   }
 
@@ -83,7 +89,6 @@ class HeartAnimation {
       this.setupParticles();
       this.setupAnimation();
       this.loadHeartModel();
-      this.setupEventListeners();
     } catch (error) {
       console.error("Failed to initialize HeartAnimation:", error);
       this.showError("Failed to initialize animation");
@@ -272,8 +277,6 @@ class HeartAnimation {
   }
 
   setupEventListeners() {
-    window.addEventListener("resize", () => this.onWindowResize(), false);
-
     // Add keyboard controls for accessibility
     document.addEventListener("keydown", (event) => this.onKeyDown(event));
 
@@ -284,6 +287,16 @@ class HeartAnimation {
         event.preventDefault();
       },
       { passive: false }
+    );
+
+    let resizeTimeout;
+    window.addEventListener(
+      "resize",
+      () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => this.onWindowResize(), 100);
+      },
+      false
     );
   }
 
@@ -330,9 +343,8 @@ class HeartAnimation {
   }
 
   updateParticles() {
-    this.positions = [];
-    this.colors = [];
-
+    let posIdx = 0,
+      colorIdx = 0;
     this.spikes.forEach((spike) => {
       spike.update(this.beat);
 
@@ -344,8 +356,12 @@ class HeartAnimation {
         CONFIG.MAX_Z * CONFIG.RATE_Z + rand > spike.one.z &&
         spike.one.z > -CONFIG.MAX_Z * CONFIG.RATE_Z - rand
       ) {
-        this.positions.push(spike.one.x, spike.one.y, spike.one.z);
-        this.colors.push(color.r, color.g, color.b);
+        this.positions[posIdx++] = spike.one.x;
+        this.positions[posIdx++] = spike.one.y;
+        this.positions[posIdx++] = spike.one.z;
+        this.colors[colorIdx++] = color.r;
+        this.colors[colorIdx++] = color.g;
+        this.colors[colorIdx++] = color.b;
       }
 
       // Second particle layer
@@ -353,31 +369,32 @@ class HeartAnimation {
         CONFIG.MAX_Z * CONFIG.RATE_Z + rand * 2 > spike.one.z &&
         spike.one.z > -CONFIG.MAX_Z * CONFIG.RATE_Z - rand * 2
       ) {
-        this.positions.push(spike.two.x, spike.two.y, spike.two.z);
-        this.colors.push(color.r, color.g, color.b);
+        this.positions[posIdx++] = spike.two.x;
+        this.positions[posIdx++] = spike.two.y;
+        this.positions[posIdx++] = spike.two.z;
+        this.colors[colorIdx++] = color.r;
+        this.colors[colorIdx++] = color.g;
+        this.colors[colorIdx++] = color.b;
       }
     });
-
     this.geometry.setAttribute(
       "position",
-      new THREE.BufferAttribute(new Float32Array(this.positions), 3)
+      new THREE.BufferAttribute(this.positions.subarray(0, posIdx), 3)
     );
     this.geometry.setAttribute(
       "color",
-      new THREE.BufferAttribute(new Float32Array(this.colors), 3)
+      new THREE.BufferAttribute(this.colors.subarray(0, colorIdx), 3)
     );
   }
 
   updateHeartGeometry(time) {
     const vs = this.heart.geometry.attributes.position.array;
-
     for (let i = 0; i < vs.length; i += 3) {
-      const v = new THREE.Vector3(
+      this.tempVec3.set(
         this.originHeart[i],
         this.originHeart[i + 1],
         this.originHeart[i + 2]
       );
-
       const noise =
         this.simplex.noise4D(
           this.originHeart[i] * CONFIG.NOISE_SCALE,
@@ -385,13 +402,13 @@ class HeartAnimation {
           this.originHeart[i + 2] * CONFIG.NOISE_SCALE,
           time * 0.0005
         ) + 1;
-
-      v.multiplyScalar(noise * CONFIG.NOISE_AMPLITUDE * this.beat.a);
-      vs[i] = v.x;
-      vs[i + 1] = v.y;
-      vs[i + 2] = v.z;
+      this.tempVec3.multiplyScalar(
+        noise * CONFIG.NOISE_AMPLITUDE * this.beat.a
+      );
+      vs[i] = this.tempVec3.x;
+      vs[i + 1] = this.tempVec3.y;
+      vs[i + 2] = this.tempVec3.z;
     }
-
     this.heart.geometry.attributes.position.needsUpdate = true;
   }
 
