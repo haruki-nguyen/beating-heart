@@ -21,15 +21,15 @@ console.log(
   "color: #ff1775; font-size: 16px; font-weight: bold;"
 );
 console.log(
-  "%cTrái tim này là dành cho em, như tim anh vậy... 💓",
+  "%cTrái tim này là dành cho vợ, như tim anh vậy... 💓",
   "color: #ff77ae; font-size: 14px;"
 );
 console.log(
-  "%cMỗi hạt, mỗi chuyển động, mỗi nhịp đập - tất cả đều dành cho em! ✨",
+  "%cMỗi hạt, mỗi chuyển động, mỗi nhịp đập - tất cả đều dành cho vợ! ✨",
   "color: #ffd4ee; font-size: 14px;"
 );
 console.log(
-  "%c❤️ Anh yêu em! ❤️",
+  "%c❤️ Chồng yêu vợ! ❤️",
   "color: #ff1775; font-size: 18px; font-weight: bold; text-shadow: 1px 1px 2px rgba(255, 23, 117, 0.3);"
 );
 
@@ -121,7 +121,7 @@ const Utils = {
   // Check if device is mobile
   isMobile() {
     return (
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|Iemobile|Opera Mini/i.test(
         navigator.userAgent
       ) || window.innerWidth <= 768
     );
@@ -238,6 +238,7 @@ class HeartAnimation {
     // Cache DOM elements
     this.loadingElement = document.getElementById("loading");
     this.musicControls = document.getElementById("music-controls");
+    this.helpButton = document.getElementById("help-button");
     this.mainContent = document.getElementById("main-content");
 
     // Initialize the application
@@ -331,7 +332,7 @@ class HeartAnimation {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = false; // Disable shadows for performance
     this.renderer.outputEncoding = THREE.sRGBEncoding;
-    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.tonemapping = THREE.NoTonemapping;
 
     // Performance optimizations
     this.renderer.sortObjects = false; // Disable automatic sorting
@@ -369,8 +370,15 @@ class HeartAnimation {
       this.musicControls.addEventListener("click", () => {
         this.musicControls.style.opacity = "0";
         setTimeout(() => {
-          this.musicControls.style.display = "none";
+          this.musicControls.hidden = true;
         }, 300);
+      });
+    }
+
+    // Add help button event listener
+    if (this.helpButton) {
+      this.helpButton.addEventListener("click", () => {
+        this.toggleControlsVisibility();
       });
     }
 
@@ -424,8 +432,8 @@ class HeartAnimation {
 
   onTap() {
     // Handle tap gesture - could toggle music controls visibility
-    if (this.musicControls && this.musicControls.style.display === "none") {
-      this.musicControls.style.display = "block";
+    if (this.musicControls && this.musicControls.hidden) {
+      this.musicControls.hidden = false;
       this.musicControls.style.opacity = "0.8";
     }
   }
@@ -530,7 +538,7 @@ class HeartAnimation {
 
       // Add event listeners for audio
       this.audio.addEventListener("canplaythrough", () => {
-        console.log("Audio loaded and ready to play");
+        // Audio loaded and ready to play
       });
 
       this.audio.addEventListener("error", (error) => {
@@ -539,7 +547,7 @@ class HeartAnimation {
       });
 
       this.audio.addEventListener("ended", () => {
-        console.log("Audio playback ended - restarting automatically");
+        // Audio playback ended - restarting automatically
         // The loop property should handle this automatically, but we'll add a fallback
         if (!this.audio.loop) {
           this.audio.currentTime = 0;
@@ -551,11 +559,11 @@ class HeartAnimation {
 
       // Add loading progress
       this.audio.addEventListener("loadstart", () => {
-        console.log("Audio loading started");
+        // Audio loading started
       });
 
       this.audio.addEventListener("loadeddata", () => {
-        console.log("Audio data loaded");
+        // Audio data loaded
       });
     } catch (error) {
       console.error("Failed to setup audio:", error);
@@ -631,16 +639,16 @@ class HeartAnimation {
 
   toggleControlsVisibility() {
     if (this.musicControls) {
-      const isVisible = this.musicControls.style.display !== "none";
+      const isVisible = !this.musicControls.hidden;
 
       if (isVisible) {
         this.musicControls.style.opacity = "0";
         setTimeout(() => {
-          this.musicControls.style.display = "none";
+          this.musicControls.hidden = true;
         }, 300);
         Utils.updateAriaLive("Controls hidden", "polite");
       } else {
-        this.musicControls.style.display = "block";
+        this.musicControls.hidden = false;
         this.musicControls.style.opacity = "0.8";
         Utils.updateAriaLive("Controls shown", "polite");
       }
@@ -658,7 +666,6 @@ class HeartAnimation {
           if (playPromise !== undefined) {
             playPromise
               .then(() => {
-                console.log("Audio started playing successfully");
                 Utils.updateAriaLive("Music started playing", "polite");
               })
               .catch((error) => {
@@ -712,7 +719,6 @@ class HeartAnimation {
       this.audio
         .play()
         .then(() => {
-          console.log("Audio started playing after user interaction");
           document.body.removeChild(audioPrompt);
         })
         .catch((error) => {
@@ -784,7 +790,6 @@ class HeartAnimation {
   onHeartProgress(progress) {
     const percent = Math.round((progress.loaded / progress.total) * 100);
     Utils.updateLoadingProgress(95 + percent * 0.05); // Last 5% of loading
-    console.log(`Loading heart model: ${percent}%`);
   }
 
   onHeartError(error) {
@@ -895,10 +900,8 @@ class HeartAnimation {
         if (this.audio) {
           if (this.audio.paused) {
             this.audio.play();
-            console.log("Music resumed");
           } else {
             this.audio.pause();
-            console.log("Music paused");
           }
         }
         break;
@@ -908,7 +911,6 @@ class HeartAnimation {
         if (this.audio) {
           this.audio.currentTime = 0;
           this.audio.play();
-          console.log("Music restarted");
         }
         break;
       case "+":
@@ -916,14 +918,12 @@ class HeartAnimation {
         // Increase volume
         if (this.audio && this.audio.volume < 1.0) {
           this.audio.volume = Math.min(1.0, this.audio.volume + 0.1);
-          console.log("Volume increased to:", this.audio.volume);
         }
         break;
       case "-":
         // Decrease volume
         if (this.audio && this.audio.volume > 0.0) {
           this.audio.volume = Math.max(0.0, this.audio.volume - 0.1);
-          console.log("Volume decreased to:", this.audio.volume);
         }
         break;
       case "l":
@@ -931,7 +931,6 @@ class HeartAnimation {
         // Toggle loop
         if (this.audio) {
           this.audio.loop = !this.audio.loop;
-          console.log("Loop " + (this.audio.loop ? "enabled" : "disabled"));
           this.showLoopStatus();
         }
         break;
@@ -1078,8 +1077,6 @@ class HeartAnimation {
     this.spikes = [];
     this.positions = null;
     this.colors = null;
-
-    console.log("HeartAnimation cleaned up");
   }
 }
 
@@ -1154,11 +1151,9 @@ document.addEventListener("DOMContentLoaded", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     // Pause animation when tab is not visible
-    console.log("Page hidden - animation paused");
     Utils.updateAriaLive("Animation paused", "polite");
   } else {
     // Resume animation when tab becomes visible
-    console.log("Page visible - animation resumed");
     Utils.updateAriaLive("Animation resumed", "polite");
   }
 });
@@ -1198,10 +1193,10 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {
-        console.log("SW registered: ", registration);
+        // Service Worker registered successfully
       })
       .catch((registrationError) => {
-        console.log("SW registration failed: ", registrationError);
+        // Service Worker registration failed
       });
   });
 }

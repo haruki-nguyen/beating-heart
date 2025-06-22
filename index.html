@@ -103,6 +103,16 @@
       </div>
     </div>
 
+    <!-- Circular help button -->
+    <button
+      id="help-button"
+      class="help-button"
+      aria-label="Hiển thị hướng dẫn điều khiển"
+      title="Hiển thị hướng dẫn điều khiển"
+    >
+      ?
+    </button>
+
     <!-- Keyboard controls guide -->
     <div
       id="music-controls"
@@ -110,6 +120,7 @@
       role="region"
       aria-label="Hướng dẫn điều khiển"
       tabindex="0"
+      hidden
     >
       <div
         class="controls-header"
@@ -205,11 +216,7 @@
       window.addEventListener("load", function () {
         if ("performance" in window) {
           const perfData = performance.getEntriesByType("navigation")[0];
-          console.log(
-            "Page load time:",
-            perfData.loadEventEnd - perfData.loadEventStart,
-            "ms"
-          );
+          // Page load time logged for performance monitoring
         }
       });
 
