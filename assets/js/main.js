@@ -356,6 +356,15 @@ class HeartAnimation {
       Utils.updateLoadingProgress(90);
 
       this.loadHeartModel();
+
+      const startAudio = () => {
+        if (this.audio && this.audio.paused) {
+          this.playAudio();
+        }
+      };
+
+      document.body.addEventListener("click", startAudio, { once: true });
+      document.body.addEventListener("touchend", startAudio, { once: true });
     } catch (error) {
       console.error("Failed to initialize HeartAnimation:", error);
       Utils.showError(
@@ -712,78 +721,18 @@ class HeartAnimation {
   }
 
   playAudio() {
-    if (this.audio) {
-      try {
-        // Check if audio is already playing
-        if (this.audio.paused) {
-          // Try to play with better error handling
-          const playPromise = this.audio.play();
-
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                Utils.updateAriaLive("Music started playing", "polite");
-              })
-              .catch((error) => {
-                console.error("Failed to play audio:", error);
-                // Handle autoplay restrictions
-                this.handleAutoplayRestriction();
-              });
-          }
-        }
-      } catch (error) {
-        console.error("Error playing audio:", error);
-      }
-    }
-  }
-
-  handleAutoplayRestriction() {
-    // Create a user interaction prompt for audio
-    const audioPrompt = document.createElement("div");
-    audioPrompt.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0, 0, 0, 0.9);
-      color: #ff77fc;
-      padding: 20px;
-      border-radius: 10px;
-      text-align: center;
-      z-index: 2000;
-      font-family: Arial, sans-serif;
-      border: 2px solid #ff77fc;
-    `;
-    audioPrompt.innerHTML = `
-      <h3>🎵 Music Ready!</h3>
-      <p>Click anywhere to start the music</p>
-      <button style="
-        background: #ff77fc;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        cursor: pointer;
-        margin-top: 10px;
-      ">Play Music</button>
-    `;
-
-    document.body.appendChild(audioPrompt);
-
-    const playButton = audioPrompt.querySelector("button");
-    const playMusic = () => {
+    if (this.audio && this.audio.paused) {
       this.audio
         .play()
         .then(() => {
-          document.body.removeChild(audioPrompt);
+          Utils.showNotification("▶️ Music started", "success");
+          Utils.updateAriaLive("Music started playing", "polite");
         })
-        .catch((error) => {
-          console.error("Still failed to play audio:", error);
+        .catch((err) => {
+          console.error("Audio playback failed:", err);
+          Utils.showNotification("Could not play audio", "error");
         });
-    };
-
-    playButton.addEventListener("click", playMusic);
-    audioPrompt.addEventListener("click", playMusic);
+    }
   }
 
   loadHeartModel() {
@@ -818,9 +767,6 @@ class HeartAnimation {
       this.initParticles();
       this.startAnimation();
       this.hideLoading();
-
-      // Play the "she-says" song after the model is loaded
-      this.playAudio();
 
       // Update ARIA for screen readers
       if (this.mainContent) {
