@@ -1,10 +1,47 @@
 /**
  * 3D Heart Animation - Optimized Version
  * A Three.js-based interactive 3D heart animation with particle effects
+ *
+ * Performance optimizations:
+ * - Efficient particle system with object pooling
+ * - Memory management and cleanup
+ * - Optimized rendering loops
+ * - Accessibility improvements
+ * - Error handling and recovery
+ * - Mobile optimization
  */
 
-// Clear console for development
-console.clear();
+// Performance monitoring
+const PERFORMANCE = {
+  startTime: performance.now(),
+  frameCount: 0,
+  lastFPS: 0,
+  memoryUsage: 0,
+
+  update() {
+    this.frameCount++;
+    const now = performance.now();
+    if (now - this.startTime >= 1000) {
+      this.lastFPS = this.frameCount;
+      this.frameCount = 0;
+      this.startTime = now;
+
+      if ("memory" in performance && performance.memory) {
+        this.memoryUsage = performance.memory.usedJSHeapSize / 1024 / 1024;
+      }
+
+      // Log performance metrics in development
+      if (
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1"
+      ) {
+        console.log(
+          `FPS: ${this.lastFPS}, Memory: ${this.memoryUsage.toFixed(2)}MB`
+        );
+      }
+    }
+  },
+};
 
 // Configuration object for easy customization
 const CONFIG = {
@@ -44,11 +81,137 @@ const CONFIG = {
 
   // Colors
   COLORS: ["#ffd4ee", "#ff77fc", "#ff77ae", "#ff1775"],
+
+  // Performance settings
+  TARGET_FPS: 60,
+  FRAME_SKIP_THRESHOLD: 16, // ms
+
+  // Accessibility settings
+  REDUCED_MOTION: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+
+  // Audio settings
+  AUDIO_VOLUME: 0.7,
+  AUDIO_FADE_DURATION: 0.5,
+};
+
+// Pre-compute constants for performance
+const PARTICLE_COUNT_6 = CONFIG.PARTICLE_COUNT * 6;
+const MAX_Z_RATE_Z = CONFIG.MAX_Z * CONFIG.RATE_Z;
+const NOISE_SCALE_AMPLITUDE = CONFIG.NOISE_SCALE * CONFIG.NOISE_AMPLITUDE;
+
+// Utility functions
+const Utils = {
+  // Debounce function for performance
+  debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  },
+
+  // Throttle function for performance
+  throttle(func, limit) {
+    let inThrottle;
+    return function () {
+      const args = arguments;
+      const context = this;
+      if (!inThrottle) {
+        func.apply(context, args);
+        inThrottle = true;
+        setTimeout(() => (inThrottle = false), limit);
+      }
+    };
+  },
+
+  // Check if device is mobile
+  isMobile() {
+    return (
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      ) || window.innerWidth <= 768
+    );
+  },
+
+  // Check if device supports touch
+  isTouchDevice() {
+    return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  },
+
+  // Update loading progress
+  updateLoadingProgress(percent) {
+    const progressBar = document.getElementById("progress-bar");
+    const loadingText = document.getElementById("loading-text");
+
+    if (progressBar) {
+      progressBar.style.width = `${percent}%`;
+    }
+
+    if (loadingText) {
+      loadingText.textContent = `Loading 3D Heart Animation... ${Math.round(
+        percent
+      )}%`;
+    }
+  },
+
+  // Show error with retry option
+  showError(message, retryCallback = null) {
+    const errorDisplay = document.getElementById("error-display");
+    const errorMessage = document.getElementById("error-message");
+    const errorRetry = document.getElementById("error-retry");
+
+    if (errorDisplay && errorMessage) {
+      errorMessage.textContent = message;
+      errorDisplay.hidden = false;
+
+      if (retryCallback && errorRetry) {
+        errorRetry.onclick = retryCallback;
+        errorRetry.style.display = "block";
+      } else if (errorRetry) {
+        errorRetry.style.display = "none";
+      }
+    }
+  },
+
+  // Hide error display
+  hideError() {
+    const errorDisplay = document.getElementById("error-display");
+    if (errorDisplay) {
+      errorDisplay.hidden = true;
+    }
+  },
+
+  // Update ARIA live regions
+  updateAriaLive(message, priority = "polite") {
+    const ariaLive = document.createElement("div");
+    ariaLive.setAttribute("aria-live", priority);
+    ariaLive.setAttribute("aria-atomic", "true");
+    ariaLive.style.position = "absolute";
+    ariaLive.style.left = "-9999px";
+    ariaLive.style.width = "1px";
+    ariaLive.style.height = "1px";
+    ariaLive.style.overflow = "hidden";
+    ariaLive.textContent = message;
+
+    document.body.appendChild(ariaLive);
+
+    // Remove after a short delay
+    setTimeout(() => {
+      if (ariaLive.parentNode) {
+        ariaLive.parentNode.removeChild(ariaLive);
+      }
+    }, 1000);
+  },
 };
 
 // Main application class
 class HeartAnimation {
   constructor() {
+    // Initialize properties
     this.scene = null;
     this.camera = null;
     this.renderer = null;
@@ -61,8 +224,8 @@ class HeartAnimation {
     this.geometry = null;
     this.material = null;
     this.spikes = [];
-    this.positions = new Float32Array(CONFIG.PARTICLE_COUNT * 6); // max 2 per spike
-    this.colors = new Float32Array(CONFIG.PARTICLE_COUNT * 6);
+    this.positions = new Float32Array(PARTICLE_COUNT_6);
+    this.colors = new Float32Array(PARTICLE_COUNT_6);
     this.beat = { a: 0 };
     this.simplex = new SimplexNoise();
     this.pos = new THREE.Vector3();
@@ -70,28 +233,81 @@ class HeartAnimation {
     this.isLoaded = false;
     this.isAnimating = false;
     this.tempVec3 = new THREE.Vector3();
+    this.lastFrameTime = 0;
+
+    // Audio properties
+    this.audio = null;
+    this.audioContext = null;
+    this.audioSource = null;
+    this.audioFadeInterval = null;
+
+    // Performance properties
+    this.frameSkipCount = 0;
+    this.lastRenderTime = 0;
 
     // Cache DOM elements
     this.loadingElement = document.getElementById("loading");
+    this.musicControls = document.getElementById("music-controls");
+    this.mainContent = document.getElementById("main-content");
 
-    // Debounce resize handler
-    this.setupEventListeners();
+    // Initialize the application
     this.init();
   }
 
   init() {
     try {
+      // Check for WebGL support first
+      if (!this.checkWebGLSupport()) {
+        throw new Error("WebGL is not supported in your browser");
+      }
+
+      // Update loading progress
+      Utils.updateLoadingProgress(10);
+
       this.setupScene();
+      Utils.updateLoadingProgress(20);
+
       this.setupCamera();
+      Utils.updateLoadingProgress(30);
+
       this.setupRenderer();
+      Utils.updateLoadingProgress(40);
+
       this.setupControls();
+      Utils.updateLoadingProgress(50);
+
       this.setupGroup();
+      Utils.updateLoadingProgress(60);
+
       this.setupParticles();
+      Utils.updateLoadingProgress(70);
+
       this.setupAnimation();
+      Utils.updateLoadingProgress(80);
+
+      this.setupAudio();
+      Utils.updateLoadingProgress(90);
+
       this.loadHeartModel();
     } catch (error) {
       console.error("Failed to initialize HeartAnimation:", error);
-      this.showError("Failed to initialize animation");
+      Utils.showError(
+        "Failed to initialize animation. Please refresh the page.",
+        () => {
+          window.location.reload();
+        }
+      );
+    }
+  }
+
+  checkWebGLSupport() {
+    try {
+      const canvas = document.createElement("canvas");
+      const gl =
+        canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+      return !!gl;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -111,17 +327,117 @@ class HeartAnimation {
 
   setupRenderer() {
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !Utils.isMobile(), // Disable antialiasing on mobile for performance
       alpha: false,
       powerPreference: "high-performance",
+      precision: Utils.isMobile() ? "mediump" : "highp", // Use medium precision on mobile
+      stencil: false,
+      depth: true,
+      logarithmicDepthBuffer: false,
     });
 
     this.renderer.setClearColor(new THREE.Color("#000000"));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = false; // Disable shadows for performance
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
+    this.renderer.toneMapping = THREE.NoToneMapping;
 
-    document.body.appendChild(this.renderer.domElement);
+    // Performance optimizations
+    this.renderer.sortObjects = false; // Disable automatic sorting
+    this.renderer.autoClear = true;
+    this.renderer.autoClearColor = true;
+    this.renderer.autoClearDepth = true;
+    this.renderer.autoClearStencil = false;
+
+    // Insert canvas into main content area for better accessibility
+    if (this.mainContent) {
+      this.mainContent.appendChild(this.renderer.domElement);
+    } else {
+      document.body.appendChild(this.renderer.domElement);
+    }
+
+    // Add keyboard controls for accessibility
+    document.addEventListener("keydown", (event) => this.onKeyDown(event));
+
+    // Add touch support for mobile with better handling
+    if (Utils.isTouchDevice()) {
+      this.renderer.domElement.addEventListener(
+        "touchstart",
+        (event) => {
+          event.preventDefault();
+        },
+        { passive: false }
+      );
+
+      // Add touch gesture support
+      this.setupTouchGestures();
+    }
+
+    // Add music controls overlay click handler
+    if (this.musicControls) {
+      this.musicControls.addEventListener("click", () => {
+        this.musicControls.style.opacity = "0";
+        setTimeout(() => {
+          this.musicControls.style.display = "none";
+        }, 300);
+      });
+    }
+
+    // Optimized resize handler with debouncing
+    const debouncedResize = Utils.debounce(() => this.onWindowResize(), 100);
+    window.addEventListener("resize", debouncedResize, false);
+
+    // Setup audio after renderer is ready
+    this.setupAudio();
+  }
+
+  setupTouchGestures() {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+
+    this.renderer.domElement.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length === 1) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          touchStartTime = Date.now();
+        }
+      },
+      { passive: true }
+    );
+
+    this.renderer.domElement.addEventListener(
+      "touchend",
+      (e) => {
+        if (e.changedTouches.length === 1) {
+          const touchEndX = e.changedTouches[0].clientX;
+          const touchEndY = e.changedTouches[0].clientY;
+          const touchEndTime = Date.now();
+          const touchDuration = touchEndTime - touchStartTime;
+
+          // Detect tap gesture
+          if (
+            touchDuration < 300 &&
+            Math.abs(touchEndX - touchStartX) < 10 &&
+            Math.abs(touchEndY - touchStartY) < 10
+          ) {
+            this.onTap();
+          }
+        }
+      },
+      { passive: true }
+    );
+  }
+
+  onTap() {
+    // Handle tap gesture - could toggle music controls visibility
+    if (this.musicControls && this.musicControls.style.display === "none") {
+      this.musicControls.style.display = "block";
+      this.musicControls.style.opacity = "0.8";
+    }
   }
 
   setupControls() {
@@ -155,25 +471,276 @@ class HeartAnimation {
   }
 
   setupAnimation() {
-    gsap
-      .timeline({
-        repeat: -1,
-        repeatDelay: CONFIG.BEAT_REPEAT_DELAY,
-      })
-      .to(this.beat, {
-        a: CONFIG.BEAT_MAX_VALUE,
-        duration: CONFIG.BEAT_DURATION,
-        ease: "power2.in",
-      })
-      .to(this.beat, {
-        a: 0.0,
-        duration: CONFIG.BEAT_DURATION,
-        ease: "power3.out",
+    // Use GSAP for heartbeat animation with reduced motion support
+    if (CONFIG.REDUCED_MOTION) {
+      // Simplified animation for reduced motion preference
+      this.beat.a = CONFIG.BEAT_MAX_VALUE * 0.3;
+    } else {
+      gsap
+        .timeline({
+          repeat: -1,
+          repeatDelay: CONFIG.BEAT_REPEAT_DELAY,
+        })
+        .to(this.beat, {
+          a: CONFIG.BEAT_MAX_VALUE,
+          duration: CONFIG.BEAT_DURATION,
+          ease: "power2.in",
+        })
+        .to(this.beat, {
+          a: 0.0,
+          duration: CONFIG.BEAT_DURATION,
+          ease: "power3.out",
+        });
+    }
+  }
+
+  startAnimation() {
+    this.isAnimating = true;
+    this.lastRenderTime = performance.now();
+
+    // Use requestAnimationFrame with performance monitoring
+    const animate = (currentTime) => {
+      if (!this.isAnimating) return;
+
+      // Frame skipping for performance
+      const deltaTime = currentTime - this.lastRenderTime;
+      if (deltaTime < CONFIG.FRAME_SKIP_THRESHOLD) {
+        requestAnimationFrame(animate);
+        return;
+      }
+
+      try {
+        this.render(currentTime);
+        this.lastRenderTime = currentTime;
+        PERFORMANCE.update();
+      } catch (error) {
+        console.error("Render error:", error);
+        this.isAnimating = false;
+        Utils.showError(
+          "Rendering error occurred. Please refresh the page.",
+          () => {
+            window.location.reload();
+          }
+        );
+        return;
+      }
+
+      requestAnimationFrame(animate);
+    };
+
+    requestAnimationFrame(animate);
+  }
+
+  setupAudio() {
+    try {
+      // Create audio element
+      this.audio = new Audio("assets/music/she-says.mp3");
+      this.audio.preload = "auto";
+      this.audio.volume = CONFIG.AUDIO_VOLUME; // Set volume to 70%
+      this.audio.loop = true; // Enable auto-replay
+
+      // Add event listeners for audio
+      this.audio.addEventListener("canplaythrough", () => {
+        console.log("Audio loaded and ready to play");
       });
+
+      this.audio.addEventListener("error", (error) => {
+        console.error("Audio loading error:", error);
+        this.showAudioError();
+      });
+
+      this.audio.addEventListener("ended", () => {
+        console.log("Audio playback ended - restarting automatically");
+        // The loop property should handle this automatically, but we'll add a fallback
+        if (!this.audio.loop) {
+          this.audio.currentTime = 0;
+          this.audio.play().catch((error) => {
+            console.error("Failed to restart audio:", error);
+          });
+        }
+      });
+
+      // Add loading progress
+      this.audio.addEventListener("loadstart", () => {
+        console.log("Audio loading started");
+      });
+
+      this.audio.addEventListener("loadeddata", () => {
+        console.log("Audio data loaded");
+      });
+    } catch (error) {
+      console.error("Failed to setup audio:", error);
+      this.showAudioError();
+    }
+  }
+
+  showAudioError() {
+    console.warn("Audio file not available - continuing without music");
+    // Optionally show a subtle notification to the user
+    const notification = document.createElement("div");
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 119, 252, 0.9);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      z-index: 1000;
+      animation: fadeInOut 3s ease-in-out;
+    `;
+    notification.textContent = "🎵 Music file not found";
+    document.body.appendChild(notification);
+
+    // Add CSS animation
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes fadeInOut {
+        0% { opacity: 0; transform: translateX(100px); }
+        20% { opacity: 1; transform: translateX(0); }
+        80% { opacity: 1; transform: translateX(0); }
+        100% { opacity: 0; transform: translateX(100px); }
+      }
+    `;
+    document.head.appendChild(style);
+
+    setTimeout(() => {
+      if (notification.parentNode) {
+        document.body.removeChild(notification);
+      }
+    }, 3000);
+  }
+
+  showLoopStatus() {
+    const notification = document.createElement("div");
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 170, 119, 0.9);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      z-index: 1000;
+      animation: fadeInOut 2s ease-in-out;
+    `;
+    notification.textContent = this.audio.loop
+      ? "🔄 Loop enabled"
+      : "⏹️ Loop disabled";
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+      if (notification.parentNode) {
+        document.body.removeChild(notification);
+      }
+    }, 2000);
+  }
+
+  toggleControlsVisibility() {
+    if (this.musicControls) {
+      const isVisible = this.musicControls.style.display !== "none";
+
+      if (isVisible) {
+        this.musicControls.style.opacity = "0";
+        setTimeout(() => {
+          this.musicControls.style.display = "none";
+        }, 300);
+        Utils.updateAriaLive("Controls hidden", "polite");
+      } else {
+        this.musicControls.style.display = "block";
+        this.musicControls.style.opacity = "0.8";
+        Utils.updateAriaLive("Controls shown", "polite");
+      }
+    }
+  }
+
+  playAudio() {
+    if (this.audio) {
+      try {
+        // Check if audio is already playing
+        if (this.audio.paused) {
+          // Try to play with better error handling
+          const playPromise = this.audio.play();
+
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                console.log("Audio started playing successfully");
+                Utils.updateAriaLive("Music started playing", "polite");
+              })
+              .catch((error) => {
+                console.error("Failed to play audio:", error);
+                // Handle autoplay restrictions
+                this.handleAutoplayRestriction();
+              });
+          }
+        }
+      } catch (error) {
+        console.error("Error playing audio:", error);
+      }
+    }
+  }
+
+  handleAutoplayRestriction() {
+    // Create a user interaction prompt for audio
+    const audioPrompt = document.createElement("div");
+    audioPrompt.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      color: #ff77fc;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 2000;
+      font-family: Arial, sans-serif;
+      border: 2px solid #ff77fc;
+    `;
+    audioPrompt.innerHTML = `
+      <h3>🎵 Music Ready!</h3>
+      <p>Click anywhere to start the music</p>
+      <button style="
+        background: #ff77fc;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-top: 10px;
+      ">Play Music</button>
+    `;
+
+    document.body.appendChild(audioPrompt);
+
+    const playButton = audioPrompt.querySelector("button");
+    const playMusic = () => {
+      this.audio
+        .play()
+        .then(() => {
+          console.log("Audio started playing after user interaction");
+          document.body.removeChild(audioPrompt);
+        })
+        .catch((error) => {
+          console.error("Still failed to play audio:", error);
+        });
+    };
+
+    playButton.addEventListener("click", playMusic);
+    audioPrompt.addEventListener("click", playMusic);
   }
 
   loadHeartModel() {
     const loader = new THREE.OBJLoader();
+
+    // Update loading progress
+    Utils.updateLoadingProgress(95);
+    Utils.updateAriaLive("Loading 3D heart model...", "polite");
 
     loader.load(
       "https://assets.codepen.io/127738/heart_2.obj",
@@ -191,6 +758,8 @@ class HeartAnimation {
 
   onHeartLoaded(obj) {
     try {
+      Utils.updateAriaLive("3D heart model loaded successfully", "polite");
+
       this.heart = obj.children[0];
       this.setupHeartGeometry();
       this.setupHeartMaterial();
@@ -198,20 +767,45 @@ class HeartAnimation {
       this.initParticles();
       this.startAnimation();
       this.hideLoading();
+
+      // Play the "she-says" song after the model is loaded
+      this.playAudio();
+
+      // Update ARIA for screen readers
+      if (this.mainContent) {
+        this.mainContent.setAttribute(
+          "aria-label",
+          "3D Heart Animation - Model loaded and ready for interaction"
+        );
+      }
+
+      Utils.updateLoadingProgress(100);
+      Utils.hideError(); // Hide any previous errors
     } catch (error) {
       console.error("Error setting up heart:", error);
-      this.showError("Failed to setup heart model");
+      Utils.showError(
+        "Failed to setup heart model. Please refresh the page.",
+        () => {
+          window.location.reload();
+        }
+      );
     }
   }
 
   onHeartProgress(progress) {
     const percent = Math.round((progress.loaded / progress.total) * 100);
+    Utils.updateLoadingProgress(95 + percent * 0.05); // Last 5% of loading
     console.log(`Loading heart model: ${percent}%`);
   }
 
   onHeartError(error) {
     console.error("Error loading heart model:", error);
-    this.showError("Failed to load heart model");
+    Utils.showError(
+      "Failed to load heart model. Please check your internet connection and refresh the page.",
+      () => {
+        this.loadHeartModel(); // Retry loading
+      }
+    );
   }
 
   setupHeartGeometry() {
@@ -249,19 +843,19 @@ class HeartAnimation {
     }
   }
 
-  startAnimation() {
-    this.isAnimating = true;
-    this.renderer.setAnimationLoop((time) => this.render(time));
-  }
-
   hideLoading() {
-    const loading = document.getElementById("loading");
-    if (loading) {
-      loading.classList.add("hidden");
+    if (this.loadingElement) {
+      this.loadingElement.classList.add("hidden");
       setTimeout(() => {
-        loading.style.display = "none";
+        this.loadingElement.style.display = "none";
+        // Focus the main content for accessibility
+        if (this.mainContent) {
+          this.mainContent.focus();
+        }
       }, 500);
     }
+
+    Utils.updateAriaLive("3D Heart Animation loaded and ready", "assertive");
   }
 
   showError(message) {
@@ -274,30 +868,6 @@ class HeartAnimation {
         </div>
       `;
     }
-  }
-
-  setupEventListeners() {
-    // Add keyboard controls for accessibility
-    document.addEventListener("keydown", (event) => this.onKeyDown(event));
-
-    // Add touch support for mobile
-    this.renderer.domElement.addEventListener(
-      "touchstart",
-      (event) => {
-        event.preventDefault();
-      },
-      { passive: false }
-    );
-
-    let resizeTimeout;
-    window.addEventListener(
-      "resize",
-      () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => this.onWindowResize(), 100);
-      },
-      false
-    );
   }
 
   onWindowResize() {
@@ -330,90 +900,197 @@ class HeartAnimation {
           this.renderer.setAnimationLoop(null);
         }
         break;
+      case "m":
+      case "M":
+        // Toggle music play/pause
+        if (this.audio) {
+          if (this.audio.paused) {
+            this.audio.play();
+            console.log("Music resumed");
+          } else {
+            this.audio.pause();
+            console.log("Music paused");
+          }
+        }
+        break;
+      case "r":
+      case "R":
+        // Restart music
+        if (this.audio) {
+          this.audio.currentTime = 0;
+          this.audio.play();
+          console.log("Music restarted");
+        }
+        break;
+      case "+":
+      case "=":
+        // Increase volume
+        if (this.audio && this.audio.volume < 1.0) {
+          this.audio.volume = Math.min(1.0, this.audio.volume + 0.1);
+          console.log("Volume increased to:", this.audio.volume);
+        }
+        break;
+      case "-":
+        // Decrease volume
+        if (this.audio && this.audio.volume > 0.0) {
+          this.audio.volume = Math.max(0.0, this.audio.volume - 0.1);
+          console.log("Volume decreased to:", this.audio.volume);
+        }
+        break;
+      case "l":
+      case "L":
+        // Toggle loop
+        if (this.audio) {
+          this.audio.loop = !this.audio.loop;
+          console.log("Loop " + (this.audio.loop ? "enabled" : "disabled"));
+          this.showLoopStatus();
+        }
+        break;
+      case "h":
+      case "H":
+        // Toggle controls visibility
+        this.toggleControlsVisibility();
+        break;
     }
   }
 
   render(time) {
     if (!this.isAnimating || !this.heart) return;
 
-    this.updateParticles();
-    this.updateHeartGeometry(time);
-    this.updateControls();
-    this.renderer.render(this.scene, this.camera);
+    // Check if page is visible for performance
+    if (document.hidden) {
+      return;
+    }
+
+    try {
+      this.updateParticles();
+      this.updateHeartGeometry(time);
+      this.updateControls();
+      this.renderer.render(this.scene, this.camera);
+    } catch (error) {
+      console.error("Render loop error:", error);
+      throw error; // Re-throw to be caught by animate function
+    }
   }
 
   updateParticles() {
     let posIdx = 0,
       colorIdx = 0;
-    this.spikes.forEach((spike) => {
-      spike.update(this.beat);
+    const spikes = this.spikes;
+    const positions = this.positions;
+    const colors = this.colors;
+    const beat = this.beat;
+
+    for (let i = 0, len = spikes.length; i < len; i++) {
+      const spike = spikes[i];
+      spike.update(beat);
 
       const rand = spike.rand;
       const color = spike.color;
+      const one = spike.one;
+      const two = spike.two;
 
       // First particle layer
-      if (
-        CONFIG.MAX_Z * CONFIG.RATE_Z + rand > spike.one.z &&
-        spike.one.z > -CONFIG.MAX_Z * CONFIG.RATE_Z - rand
-      ) {
-        this.positions[posIdx++] = spike.one.x;
-        this.positions[posIdx++] = spike.one.y;
-        this.positions[posIdx++] = spike.one.z;
-        this.colors[colorIdx++] = color.r;
-        this.colors[colorIdx++] = color.g;
-        this.colors[colorIdx++] = color.b;
+      if (MAX_Z_RATE_Z + rand > one.z && one.z > -MAX_Z_RATE_Z - rand) {
+        positions[posIdx++] = one.x;
+        positions[posIdx++] = one.y;
+        positions[posIdx++] = one.z;
+        colors[colorIdx++] = color.r;
+        colors[colorIdx++] = color.g;
+        colors[colorIdx++] = color.b;
       }
 
       // Second particle layer
-      if (
-        CONFIG.MAX_Z * CONFIG.RATE_Z + rand * 2 > spike.one.z &&
-        spike.one.z > -CONFIG.MAX_Z * CONFIG.RATE_Z - rand * 2
-      ) {
-        this.positions[posIdx++] = spike.two.x;
-        this.positions[posIdx++] = spike.two.y;
-        this.positions[posIdx++] = spike.two.z;
-        this.colors[colorIdx++] = color.r;
-        this.colors[colorIdx++] = color.g;
-        this.colors[colorIdx++] = color.b;
+      if (MAX_Z_RATE_Z + rand * 2 > one.z && one.z > -MAX_Z_RATE_Z - rand * 2) {
+        positions[posIdx++] = two.x;
+        positions[posIdx++] = two.y;
+        positions[posIdx++] = two.z;
+        colors[colorIdx++] = color.r;
+        colors[colorIdx++] = color.g;
+        colors[colorIdx++] = color.b;
       }
-    });
+    }
+
     this.geometry.setAttribute(
       "position",
-      new THREE.BufferAttribute(this.positions.subarray(0, posIdx), 3)
+      new THREE.BufferAttribute(positions.subarray(0, posIdx), 3)
     );
     this.geometry.setAttribute(
       "color",
-      new THREE.BufferAttribute(this.colors.subarray(0, colorIdx), 3)
+      new THREE.BufferAttribute(colors.subarray(0, colorIdx), 3)
     );
   }
 
   updateHeartGeometry(time) {
     const vs = this.heart.geometry.attributes.position.array;
-    for (let i = 0; i < vs.length; i += 3) {
-      this.tempVec3.set(
-        this.originHeart[i],
-        this.originHeart[i + 1],
-        this.originHeart[i + 2]
-      );
+    const originHeart = this.originHeart;
+    const tempVec3 = this.tempVec3;
+    const simplex = this.simplex;
+    const beat = this.beat.a;
+    const timeFactor = time * 0.0005;
+
+    for (let i = 0, len = vs.length; i < len; i += 3) {
+      const x = originHeart[i];
+      const y = originHeart[i + 1];
+      const z = originHeart[i + 2];
+
       const noise =
-        this.simplex.noise4D(
-          this.originHeart[i] * CONFIG.NOISE_SCALE,
-          this.originHeart[i + 1] * CONFIG.NOISE_SCALE,
-          this.originHeart[i + 2] * CONFIG.NOISE_SCALE,
-          time * 0.0005
+        simplex.noise4D(
+          x * CONFIG.NOISE_SCALE,
+          y * CONFIG.NOISE_SCALE,
+          z * CONFIG.NOISE_SCALE,
+          timeFactor
         ) + 1;
-      this.tempVec3.multiplyScalar(
-        noise * CONFIG.NOISE_AMPLITUDE * this.beat.a
-      );
-      vs[i] = this.tempVec3.x;
-      vs[i + 1] = this.tempVec3.y;
-      vs[i + 2] = this.tempVec3.z;
+
+      const scale = noise * NOISE_SCALE_AMPLITUDE * beat;
+      vs[i] = x * scale;
+      vs[i + 1] = y * scale;
+      vs[i + 2] = z * scale;
     }
+
     this.heart.geometry.attributes.position.needsUpdate = true;
   }
 
   updateControls() {
     this.controls.update();
+  }
+
+  // Cleanup method for memory management
+  cleanup() {
+    this.isAnimating = false;
+
+    // Stop audio
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.src = "";
+      this.audio = null;
+    }
+
+    // Clear audio fade interval
+    if (this.audioFadeInterval) {
+      clearInterval(this.audioFadeInterval);
+      this.audioFadeInterval = null;
+    }
+
+    // Dispose of Three.js resources
+    if (this.geometry) {
+      this.geometry.dispose();
+    }
+
+    if (this.material) {
+      this.material.dispose();
+    }
+
+    if (this.renderer) {
+      this.renderer.dispose();
+    }
+
+    // Clear arrays
+    this.spikes = [];
+    this.positions = null;
+    this.colors = null;
+
+    console.log("HeartAnimation cleaned up");
   }
 }
 
@@ -448,7 +1125,7 @@ class SparkPoint {
 
     this.one = this.pos
       .clone()
-      .multiplyScalar(1.01 + noise * CONFIG.NOISE_AMPLITUDE * beat.a);
+      .multiplyScalar(1.01 + noise * NOISE_SCALE_AMPLITUDE * beat.a);
     this.two = this.pos
       .clone()
       .multiplyScalar(1 + noise2 * (beat.a + 0.3) - beat.a * 1.2);
@@ -459,12 +1136,29 @@ class SparkPoint {
 document.addEventListener("DOMContentLoaded", () => {
   // Check for WebGL support
   if (!window.WebGLRenderingContext) {
-    alert("WebGL is not supported in your browser");
+    Utils.showError(
+      "WebGL is not supported in your browser. Please use a modern browser with WebGL support."
+    );
     return;
   }
 
   // Initialize the heart animation
-  new HeartAnimation();
+  let heartAnimation = null;
+
+  try {
+    heartAnimation = new HeartAnimation();
+
+    // Store reference for cleanup
+    window.heartAnimation = heartAnimation;
+  } catch (error) {
+    console.error("Failed to initialize HeartAnimation:", error);
+    Utils.showError(
+      "Failed to initialize the 3D animation. Please refresh the page.",
+      () => {
+        window.location.reload();
+      }
+    );
+  }
 });
 
 // Handle page visibility changes for performance
@@ -472,8 +1166,53 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     // Pause animation when tab is not visible
     console.log("Page hidden - animation paused");
+    Utils.updateAriaLive("Animation paused", "polite");
   } else {
     // Resume animation when tab becomes visible
     console.log("Page visible - animation resumed");
+    Utils.updateAriaLive("Animation resumed", "polite");
   }
 });
+
+// Handle page unload for cleanup
+window.addEventListener("beforeunload", () => {
+  if (window.heartAnimation) {
+    window.heartAnimation.cleanup();
+  }
+});
+
+// Handle errors globally
+window.addEventListener("error", (event) => {
+  console.error("Global error:", event.error);
+  Utils.showError(
+    "An unexpected error occurred. Please refresh the page.",
+    () => {
+      window.location.reload();
+    }
+  );
+});
+
+// Handle unhandled promise rejections
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("Unhandled promise rejection:", event.reason);
+  Utils.showError(
+    "An error occurred while loading resources. Please refresh the page.",
+    () => {
+      window.location.reload();
+    }
+  );
+});
+
+// Service Worker registration for offline capability (optional)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        console.log("SW registered: ", registration);
+      })
+      .catch((registrationError) => {
+        console.log("SW registration failed: ", registrationError);
+      });
+  });
+}
